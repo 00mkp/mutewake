@@ -1,6 +1,6 @@
 # mutewake
 
-Mutes your Mac's audio output every time it sleeps, wakes, or unlocks.
+Mutes your Mac's audio output every time it sleeps, locks, wakes, or unlocks.
 
 ## Why
 
@@ -50,7 +50,7 @@ daemon:   running (pid 13958)
 audio:    muted
 recent:
   [2026-09-03 15:32:01] sleep: muted
-  [2026-09-03 15:32:05] wake: already muted (muted at sleep)
+  [2026-09-03 15:32:05] wake: already muted (muted while away)
 ```
 
 To get sound back, tap the volume-up key. mutewake **mutes** rather than setting
@@ -63,14 +63,20 @@ nothing and uses no measurable CPU:
 
 | Event | Behavior |
 | --- | --- |
-| `willSleep` (lid close) | Mutes silently; a banner would never be seen |
+| `willSleep` (lid close) | Mutes silently; nobody is looking at the screen |
+| `screenIsLocked` | Same as sleep |
 | `didWake` (lid open) | Mutes, and shows a banner |
 | `screenIsUnlocked` | Same as wake |
 
+Leaving (sleep, lock) mutes silently; returning (wake, unlock) shows the banner.
+Locking earns its own trigger because a Mac can sit locked but awake — lid open,
+on power — and nothing would mute it until you came back, leaving a window where
+notifications play aloud.
+
 Wake and unlock usually fire together on a lid-open, so events within five
 seconds of each other are collapsed to avoid a duplicate banner. If the machine
-was muted during sleep, the next wake reports it — otherwise sleep-muting would
-leave nothing for the banner to say.
+was muted on the way out, the next return reports it — otherwise muting on leave
+would leave nothing for the banner to say.
 
 `mutewake off` writes a state file *and* stops the agent. The daemon re-checks
 that file at startup and exits cleanly if it's set, and the agent is configured
@@ -108,9 +114,9 @@ properly requires a paid Apple Developer ID.
 ./test/verify.sh
 ```
 
-Integration tests against the real launchd agent and real audio state: muting,
-debounce, the no-op path, `off` stopping the daemon, `off` surviving a simulated
-reboot, toggle round-trips, and argument rejection. It toggles your actual audio
+Integration tests against the real launchd agent and real audio state: muting on
+lock and unlock, debounce, the no-op path, `off` stopping the daemon, `off`
+surviving a simulated reboot, toggle round-trips, and argument rejection. It toggles your actual audio
 while running and leaves the feature on.
 
 The sleep path isn't covered — `NSWorkspace` rejects externally posted

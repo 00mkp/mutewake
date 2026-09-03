@@ -88,24 +88,27 @@ func notify(_ body: String) {
 var lastAction = Date.distantPast
 let debounce: TimeInterval = 5
 
-// Set when we mute at sleep, so the next wake can tell you it happened. Without
-// this you would never see a banner: sleep would mute, and wake would find the
-// machine already muted and stay silent.
-var mutedWhileAsleep = false
+// Set when we mute on the way out, so the next return can tell you it happened.
+// Without this you would never see a banner: leaving would mute, and coming back
+// would find the machine already muted and stay silent.
+var mutedWhileAway = false
 
-func handleSleep() {
+// Going away: sleeping, or locking the screen. Locking matters on its own because
+// a Mac can sit locked but awake - lid open, on power - and nothing would mute it
+// until you came back, leaving a whole window where notifications play aloud.
+func handleAway(_ reason: String) {
     if isDisabled() {
-        log("sleep: skipped (disabled)")
+        log("\(reason): skipped (disabled)")
         return
     }
     if isMuted() {
-        log("sleep: already muted")
+        log("\(reason): already muted")
         return
     }
     mute()
-    mutedWhileAsleep = isMuted()
-    // No banner here on purpose - the display is already going dark.
-    log(mutedWhileAsleep ? "sleep: muted" : "sleep: MUTE FAILED")
+    mutedWhileAway = isMuted()
+    // No banner here on purpose - nobody is looking at the screen.
+    log(mutedWhileAway ? "\(reason): muted" : "\(reason): MUTE FAILED")
 }
 
 func handleWake(_ reason: String) {
@@ -121,9 +124,9 @@ func handleWake(_ reason: String) {
     lastAction = now
 
     if isMuted() {
-        if mutedWhileAsleep {
-            mutedWhileAsleep = false
-            log("\(reason): already muted (muted at sleep)")
+        if mutedWhileAway {
+            mutedWhileAway = false
+            log("\(reason): already muted (muted while away)")
             notify("Audio was muted while you were away.")
         } else {
             log("\(reason): already muted")
@@ -131,7 +134,7 @@ func handleWake(_ reason: String) {
         return
     }
     mute()
-    mutedWhileAsleep = false
+    mutedWhileAway = false
     if isMuted() {
         log("\(reason): muted")
         notify("Audio muted on \(reason).")
@@ -144,7 +147,11 @@ final class Delegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
-        ) { _ in handleSleep() }
+        ) { _ in handleAway("sleep") }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main
+        ) { _ in handleAway("lock") }
 
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
