@@ -1,0 +1,163 @@
+#!/bin/zsh
+# mutewake — mute system audio automatically on wake/unlock, so you never
+# walk into a lecture with a hot speaker. See `mutewake help`.
+set -uo pipefail
+
+LABEL="io.github.00mkp.mutewake"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LIBDIR="$HOME/.local/share/mutewake"
+APP="$LIBDIR/mutewake.app"
+SELF="$HOME/.local/bin/mutewake"
+STATE_DIR="$HOME/.config/mutewake"
+STATE="$STATE_DIR/disabled"
+LOG="$HOME/Library/Logs/mutewake.log"
+ERRLOG="$HOME/Library/Logs/mutewake.err.log"
+DOMAIN="gui/$(id -u)"
+
+is_loaded() {
+  launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1
+}
+
+daemon_pid() {
+  launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk -F'= ' '/^\tpid = /{print $2; exit}'
+}
+
+enabled() {
+  [[ ! -f "$STATE" ]]
+}
+
+audio_muted() {
+  [[ "$(osascript -e 'output muted of (get volume settings)' 2>/dev/null)" == "true" ]]
+}
+
+cmd_on() {
+  mkdir -p "$STATE_DIR"
+  rm -f "$STATE"
+  if is_loaded; then
+    launchctl kickstart -k "$DOMAIN/$LABEL" >/dev/null 2>&1
+  else
+    launchctl bootstrap "$DOMAIN" "$PLIST" >/dev/null 2>&1
+  fi
+  sleep 1
+  if [[ -n "$(daemon_pid)" ]]; then
+    print "mutewake: on — audio mutes on sleep, wake, and unlock"
+  else
+    print "mutewake: on, but the daemon did not start. Check $ERRLOG" >&2
+    return 1
+  fi
+}
+
+cmd_off() {
+  mkdir -p "$STATE_DIR"
+  : > "$STATE"
+  launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1
+  print "mutewake: off — normal operation, daemon stopped"
+}
+
+cmd_toggle() {
+  if enabled; then cmd_off; else cmd_on; fi
+}
+
+cmd_status() {
+  local lines=5
+  if [[ "${1:-}" == "-n" ]]; then
+    if [[ "${2:-}" == <-> ]]; then
+      lines="$2"
+    else
+      print "mutewake: -n needs a positive whole number, e.g. 'mutewake status -n 20'" >&2
+      return 2
+    fi
+  elif [[ -n "${1:-}" ]]; then
+    print "mutewake: unknown option '$1' for status" >&2
+    return 2
+  fi
+  local pid
+  pid="$(daemon_pid)"
+  if enabled; then
+    print "feature:  on"
+  else
+    print "feature:  off"
+  fi
+  if [[ -n "$pid" ]]; then
+    print "daemon:   running (pid $pid)"
+  else
+    print "daemon:   not running"
+  fi
+  if audio_muted; then
+    print "audio:    muted"
+  else
+    print "audio:    unmuted (volume $(osascript -e 'output volume of (get volume settings)' 2>/dev/null))"
+  fi
+  if [[ -s "$LOG" ]]; then
+    print "recent:"
+    tail -n "$lines" "$LOG" | sed 's/^/  /'
+  else
+    print "recent:   (no events logged yet)"
+  fi
+}
+
+cmd_uninstall() {
+  launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1
+
+  # Do NOT name this loop variable `path`: in zsh `path` is tied to $PATH, so
+  # assigning it destroys the command search path and every later command in the
+  # function fails with "command not found".
+  # Only ever removes what install.sh created. A source checkout is the user's
+  # own copy and is never touched.
+  local target
+  local removed=() failed=()
+  for target in "$PLIST" "$LIBDIR" "$STATE_DIR" "$LOG" "$ERRLOG" "$SELF"; do
+    [[ -e "$target" ]] || continue
+    if rm -rf "$target" 2>/dev/null; then
+      removed+=("$target")
+    else
+      failed+=("$target")
+    fi
+  done
+
+  if (( ${#removed[@]} == 0 && ${#failed[@]} == 0 )); then
+    print "mutewake: nothing to remove (already uninstalled)"
+    return 0
+  fi
+
+  print "mutewake: uninstalled"
+  for target in "${removed[@]}"; do print "  removed $target"; done
+  print "  (a git checkout of the source, if you have one, was left alone)"
+
+  if (( ${#failed[@]} > 0 )); then
+    print "mutewake: could NOT remove:" >&2
+    for target in "${failed[@]}"; do print "  $target" >&2; done
+    return 1
+  fi
+}
+
+cmd_help() {
+  cat <<'USAGE'
+mutewake — mute system audio when the Mac sleeps, wakes, or is unlocked.
+
+  mutewake on         turn the feature on (starts the daemon)
+  mutewake off        turn it off (stops the daemon; survives reboot)
+  mutewake toggle     flip between on and off
+  mutewake status     feature state, daemon state, current audio, recent events
+  mutewake status -n N  same, showing the last N log entries (default 5)
+  mutewake uninstall  remove the daemon, agent, state, and logs
+  mutewake help       this text
+
+While on, closing the lid mutes output silently, and opening it or unlocking
+confirms with a banner. Muting at sleep means a Continuity call cannot ring a
+laptop that is asleep in your bag.
+
+Your volume level is preserved — tap volume-up to come back.
+The log is trimmed to its last 500 entries each time the daemon starts.
+USAGE
+}
+
+case "${1:-status}" in
+  on)         cmd_on ;;
+  off)        cmd_off ;;
+  toggle)     cmd_toggle ;;
+  status)     shift; cmd_status "$@" ;;
+  uninstall)  cmd_uninstall ;;
+  help|-h|--help) cmd_help ;;
+  *) print "mutewake: unknown command '${1}'" >&2; print >&2; cmd_help >&2; exit 2 ;;
+esac
