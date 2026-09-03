@@ -8,6 +8,7 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LIBDIR="$HOME/.local/share/mutewake"
 APP="$LIBDIR/mutewake.app"
 SELF="$HOME/.local/bin/mutewake"
+MANIFEST="$LIBDIR/manifest"
 STATE_DIR="$HOME/.config/mutewake"
 STATE="$STATE_DIR/disabled"
 LOG="$HOME/Library/Logs/mutewake.log"
@@ -20,6 +21,36 @@ is_loaded() {
 
 daemon_pid() {
   launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk -F'= ' '/^\tpid = /{print $2; exit}'
+}
+
+manifest_get() {
+  [[ -f "$MANIFEST" ]] || return 1
+  awk -F= -v k="$1" '$1==k{sub(/^[^=]*=/,""); print; exit}' "$MANIFEST"
+}
+
+manifest_set() {
+  [[ -f "$MANIFEST" ]] || return 1
+  local key="$1" value="$2" tmp
+  tmp="$(mktemp)" || return 1
+  awk -F= -v k="$key" -v v="$value" '
+    $1==k { print k "=" v; done=1; next }
+    { print }
+    END { if (!done) print k "=" v }' "$MANIFEST" > "$tmp" && mv "$tmp" "$MANIFEST"
+}
+
+# An archive usually unpacks into a single top-level directory; accept either
+# shape rather than making the user care which.
+resolve_tree() {
+  local root="$1"
+  if [[ -f "$root/install.sh" ]]; then
+    print "$root"; return 0
+  fi
+  local -a dirs
+  dirs=("$root"/*(N/))
+  if (( ${#dirs[@]} == 1 )) && [[ -f "${dirs[1]}/install.sh" ]]; then
+    print "${dirs[1]}"; return 0
+  fi
+  return 1
 }
 
 enabled() {
@@ -60,6 +91,8 @@ cmd_toggle() {
 
 cmd_status() {
   local lines=5
+  local version
+  version="$(manifest_get version)" || version="unknown"
   if [[ "${1:-}" == "-n" ]]; then
     if [[ "${2:-}" == <-> ]]; then
       lines="$2"
@@ -73,6 +106,7 @@ cmd_status() {
   fi
   local pid
   pid="$(daemon_pid)"
+  print "version:  $version"
   if enabled; then
     print "feature:  on"
   else
@@ -131,6 +165,99 @@ cmd_uninstall() {
   fi
 }
 
+cmd_update() {
+  local given="${1:-}"
+  local tree="" tmpdir=""
+
+  if [[ -n "$given" ]]; then
+    if [[ -f "$given" ]]; then
+      tmpdir="$(mktemp -d)"
+      case "$given" in
+        *.tar.gz|*.tgz) tar -xzf "$given" -C "$tmpdir" ;;
+        *.zip)          unzip -q "$given" -d "$tmpdir" ;;
+        *) print "mutewake: unsupported archive '$given' (need .tar.gz, .tgz or .zip)" >&2
+           rm -rf "$tmpdir"; return 2 ;;
+      esac
+      tree="$(resolve_tree "$tmpdir")" || {
+        print "mutewake: no mutewake source tree inside $given" >&2
+        rm -rf "$tmpdir"; return 1; }
+    elif [[ -d "$given" ]]; then
+      tree="$given"
+    else
+      print "mutewake: no such directory or archive: $given" >&2
+      return 2
+    fi
+  else
+    tree="$(manifest_get source)" || true
+    if [[ -z "$tree" ]]; then
+      print "mutewake: no source recorded (the last install came from an archive)." >&2
+      print "  point update at one:  mutewake update <dir|archive>" >&2
+      print "  or clone and reinstall to record a source for future updates:" >&2
+      print "    git clone https://github.com/00mkp/mutewake.git" >&2
+      print "    cd mutewake && ./install.sh" >&2
+      return 1
+    fi
+    if [[ ! -d "$tree" ]]; then
+      print "mutewake: the recorded source is gone: $tree" >&2
+      print "  clone it again and reinstall:" >&2
+      print "    git clone https://github.com/00mkp/mutewake.git" >&2
+      print "    cd mutewake && ./install.sh" >&2
+      print "  or point update at a copy:  mutewake update <dir|archive>" >&2
+      return 1
+    fi
+    if [[ -d "$tree/.git" ]]; then
+      print "==> Pulling latest in $tree"
+      # --ff-only: never invent a merge commit in the user's checkout if
+      # upstream history was rewritten.
+      git -C "$tree" pull --ff-only || {
+        print "mutewake: git pull failed; resolve it in $tree and retry" >&2
+        return 1; }
+    else
+      print "==> $tree is not a git checkout; installing it as-is"
+    fi
+  fi
+
+  if [[ ! -f "$tree/install.sh" || ! -f "$tree/src/main.swift" ]]; then
+    print "mutewake: $tree does not look like a mutewake source tree" >&2
+    [[ -n "$tmpdir" ]] && rm -rf "$tmpdir"
+    return 1
+  fi
+
+  local before after prev_source
+  before="$(manifest_get version)" || before="unknown"
+  prev_source="$(manifest_get source)" || prev_source=""
+
+  print "==> Installing from $tree"
+  if ! bash "$tree/install.sh"; then
+    print "mutewake: install failed; the previous version may still be in place" >&2
+    [[ -n "$tmpdir" ]] && rm -rf "$tmpdir"
+    return 1
+  fi
+  # install.sh records whatever directory it ran from. For an archive that is a
+  # temp dir we are about to delete, so recording it would poison every later
+  # `mutewake update`. Put the real source back.
+  if [[ -n "$tmpdir" ]]; then
+    if [[ -n "$prev_source" && -d "$prev_source" ]]; then
+      manifest_set source "$prev_source"
+    else
+      manifest_set source ""
+    fi
+  fi
+  [[ -n "$tmpdir" ]] && rm -rf "$tmpdir"
+
+  # Validate rather than trust: confirm the new build is actually the one running.
+  after="$(manifest_get version)" || after="unknown"
+  if [[ -z "$(daemon_pid)" ]]; then
+    print "mutewake: updated to $after but the daemon is NOT running — try 'mutewake on'" >&2
+    return 1
+  fi
+  if [[ "$before" == "$after" ]]; then
+    print "mutewake: already up to date ($after), reinstalled and running"
+  else
+    print "mutewake: updated $before -> $after, daemon running"
+  fi
+}
+
 cmd_help() {
   cat <<'USAGE'
 mutewake — mute system audio when the Mac sleeps, wakes, or is unlocked.
@@ -140,6 +267,9 @@ mutewake — mute system audio when the Mac sleeps, wakes, or is unlocked.
   mutewake toggle     flip between on and off
   mutewake status     feature state, daemon state, current audio, recent events
   mutewake status -n N  same, showing the last N log entries (default 5)
+  mutewake update     git pull the recorded source, rebuild, and reinstall
+  mutewake update DIR|ARCHIVE
+                      update from a directory or .tar.gz/.tgz/.zip instead
   mutewake uninstall  remove the daemon, agent, state, and logs
   mutewake help       this text
 
@@ -157,6 +287,7 @@ case "${1:-status}" in
   off)        cmd_off ;;
   toggle)     cmd_toggle ;;
   status)     shift; cmd_status "$@" ;;
+  update)     shift; cmd_update "$@" ;;
   uninstall)  cmd_uninstall ;;
   help|-h|--help) cmd_help ;;
   *) print "mutewake: unknown command '${1}'" >&2; print >&2; cmd_help >&2; exit 2 ;;

@@ -40,11 +40,14 @@ mutewake off          turn it off (stops the daemon; survives reboot)
 mutewake toggle       flip between on and off
 mutewake status       feature state, daemon state, current audio, recent events
 mutewake status -n N  same, showing the last N log entries (default 5)
+mutewake update       pull the latest source, rebuild, reinstall
+mutewake update PATH  update from a directory or .tar.gz/.tgz/.zip instead
 mutewake uninstall    remove the daemon, agent, state, and logs
 ```
 
 ```
 $ mutewake status
+version:  0.2.0
 feature:  on
 daemon:   running (pid 13958)
 audio:    muted
@@ -90,10 +93,48 @@ Everything it touches:
 ```
 ~/.local/bin/mutewake                          the CLI
 ~/.local/share/mutewake/mutewake.app           the daemon
+~/.local/share/mutewake/manifest               version + source path
 ~/Library/LaunchAgents/io.github.00mkp.mutewake.plist
 ~/.config/mutewake/disabled                    present only when off
 ~/Library/Logs/mutewake.log                    trimmed to 500 lines at startup
 ```
+
+## Updating
+
+```sh
+mutewake update
+```
+
+`install.sh` records where it was run from, so `update` can find your checkout,
+`git pull --ff-only` it, rebuild, and reinstall — then confirm the daemon is
+running at the new version before reporting success. `--ff-only` is deliberate:
+a plain pull would silently create a merge commit in your checkout if upstream
+history were ever rewritten.
+
+If you installed from a tarball rather than a clone, point it at a source tree:
+
+```sh
+mutewake update ~/Downloads/mutewake-0.3.0.tar.gz
+mutewake update ~/some/checkout
+```
+
+Archives are extracted to a temporary directory, checked to make sure they
+actually contain a mutewake source tree, and installed from there. Your recorded
+source is preserved across an archive update, so a one-off archive install
+doesn't break `mutewake update` afterwards.
+
+There's no upgrade-only check — `update` installs whatever tree you give it, so
+pointing it at an older archive is a valid way to roll back.
+
+If the recorded checkout has been moved or deleted, `update` stops and tells you
+how to re-clone rather than fetching from a hardcoded URL. A fork's installed
+copy should never silently start pulling from somebody else's repository.
+
+## Versioning
+
+Semver in the `VERSION` file at the repo root. `install.sh` reads it, stamps it
+into the app bundle and the install manifest at
+`~/.local/share/mutewake/manifest`, and `mutewake status` reports it.
 
 ## Known limitation: banner attribution
 

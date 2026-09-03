@@ -13,10 +13,15 @@ BINDIR="$HOME/.local/bin"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST="$LIBDIR/manifest"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || die "mutewake is macOS-only (this is $(uname -s))."
+
+[[ -f "$SRC/VERSION" ]] || die "$SRC/VERSION is missing; this is not a complete source tree."
+VERSION="$(tr -d '[:space:]' < "$SRC/VERSION")"
+[[ -n "$VERSION" ]] || die "$SRC/VERSION is empty."
 
 if ! command -v swiftc >/dev/null 2>&1; then
   die "swiftc not found. Install the Xcode Command Line Tools:
@@ -39,7 +44,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST_EOF
 	<key>CFBundleExecutable</key><string>mutewake</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-	<key>CFBundleShortVersionString</key><string>1.0</string>
+	<key>CFBundleShortVersionString</key><string>$VERSION</string>
 	<key>CFBundleVersion</key><string>1</string>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
 	<key>LSMinimumSystemVersion</key><string>13.0</string>
@@ -85,6 +90,15 @@ cat > "$PLIST" <<PLIST_EOF
 PLIST_EOF
 plutil -lint "$PLIST" >/dev/null || die "generated plist is malformed"
 
+echo "==> Recording the install manifest"
+# `mutewake update` needs to know where this tree lives: the installed CLI is a
+# copy and would otherwise have no way back to the source.
+cat > "$MANIFEST" <<MANIFEST_EOF
+version=$VERSION
+source=$SRC
+installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+MANIFEST_EOF
+
 echo "==> Starting"
 rm -f "$HOME/.config/mutewake/disabled"
 launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null || true
@@ -95,7 +109,7 @@ if ! launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
 fi
 
 echo
-echo "mutewake is installed and running."
+echo "mutewake $VERSION is installed and running."
 case ":$PATH:" in
   *":$BINDIR:"*) ;;
   *) echo
