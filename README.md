@@ -28,6 +28,18 @@ cd mutewake
 ./install.sh
 ```
 
+Or from a [release](https://github.com/00mkp/mutewake/releases) archive:
+
+```sh
+curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.2.0.tar.gz | tar -xz
+cd mutewake-0.2.0
+./install.sh
+```
+
+Cloning is worth preferring: `install.sh` records where it ran from, so a clone
+gives you working `mutewake update` afterwards. Installing from an archive records
+the extracted directory instead, so later updates need an explicit path.
+
 The installer builds the daemon from source, generates a launchd agent for your
 account, and starts it. It builds locally rather than shipping a binary so you
 never hit Gatekeeper quarantine — and so you can read exactly what you're running.
