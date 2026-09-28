@@ -4,7 +4,7 @@ import AppKit
 // and dark mode, accessibility, and keyboard navigation all come for free.
 final class StatusMenu: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let menu = NSMenu()
+    let menu = NSMenu()
 
     private let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -23,7 +23,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     func refreshIcon() {
         let on = !isDisabled()
         let label = on ? "mutewake: on" : "mutewake: off"
-        let image = NSImage(systemSymbolName: on ? "speaker.slash.fill" : "speaker.slash",
+        // A sleeping speaker rather than a plain mute glyph: it reads as "audio +
+        // sleep", and doesn't blend in with the system's own volume controls.
+        let image = NSImage(systemSymbolName: on ? "speaker.zzz.fill" : "speaker.zzz",
                             accessibilityDescription: label)
         image?.isTemplate = true
         item.button?.image = image
@@ -37,29 +39,28 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         let on = !isDisabled()
 
-        let title = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        title.attributedTitle = NSAttributedString(
-            string: on ? "mutewake is On" : "mutewake is Off",
-            attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
-        title.isEnabled = false
-        menu.addItem(title)
-
+        menu.addItem(row(InfoRow(title: "mutewake", detail: on ? "On" : "Off",
+                                 bold: true, dot: on ? .systemGreen : .tertiaryLabelColor)))
         let audio = audioState()
-        menu.addItem(info(audio.map {
-            $0.muted ? "Audio: Muted" : "Audio: On — volume \($0.volume)%"
-        } ?? "Audio: Unknown"))
+        menu.addItem(row(InfoRow(title: "Audio", detail: audio.map {
+            $0.muted ? "Muted" : "\($0.volume)%"
+        } ?? "Unknown")))
 
         menu.addItem(.separator())
         menu.addItem(action(on ? "Turn Off" : "Turn On", #selector(toggle), key: "t"))
-        if audio?.muted == true {
-            menu.addItem(action("Unmute Now", #selector(unmuteNow), key: "u"))
+        // Mute rather than zero the volume, so unmuting brings back whatever level
+        // you had. Hidden when the output can't be read.
+        if let audio {
+            menu.addItem(audio.muted
+                ? action("Unmute Now", #selector(unmuteNow), key: "u")
+                : action("Mute Now", #selector(muteNow), key: "m"))
         }
 
         menu.addItem(.separator())
         menu.addItem(header("Recent Activity"))
         let entries = recentLog(5).reversed()
         if entries.isEmpty {
-            menu.addItem(info("No activity yet"))
+            menu.addItem(row(InfoRow(title: "No activity yet", detail: "", secondary: true)))
         }
         for entry in entries {
             menu.addItem(activityRow(entry.date, entry.message))
@@ -77,6 +78,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     // the change, logs it, and refreshes the icon - one path for both front ends.
     @objc private func toggle() {
         setDisabled(!isDisabled())
+    }
+
+    @objc private func muteNow() {
+        mute()
+        log("muted from menu")
     }
 
     @objc private func unmuteNow() {
@@ -124,30 +130,29 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    private func info(_ title: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
+    // Read-only rows are custom views, not disabled items: NSMenu draws every
+    // disabled item greyed out whatever its attributed colors say, which made
+    // the status and activity hard to read.
+    private func row(_ view: NSView) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.view = view
         return item
     }
 
     private func header(_ title: String) -> NSMenuItem {
         if #available(macOS 14, *) { return .sectionHeader(title: title) }
-        return info(title)
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
     }
 
     private func activityRow(_ date: Date?, _ message: String) -> NSMenuItem {
-        let text = NSMutableAttributedString(string: describe(message),
-                                             attributes: [.foregroundColor: NSColor.labelColor])
+        var ago = ""
         if let date {
-            let ago = Date().timeIntervalSince(date) < 60
+            ago = Date().timeIntervalSince(date) < 60
                 ? "just now" : relative.localizedString(for: date, relativeTo: Date())
-            text.append(NSAttributedString(string: "  ·  \(ago)",
-                                           attributes: [.foregroundColor: NSColor.secondaryLabelColor]))
         }
-        let item = info("")
-        item.attributedTitle = text
-        item.indentationLevel = 1
-        return item
+        return row(InfoRow(title: describe(message), detail: ago))
     }
 
     /// Turns a raw log line ("wake: already muted (muted while away)") into
@@ -156,6 +161,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         switch message {
         case "feature: on": return "Turned on"
         case "feature: off": return "Turned off"
+        case "muted from menu": return "Muted from menu"
         case "unmuted from menu": return "Unmuted from menu"
         case "quit from menu": return "Quit"
         default: break
@@ -175,4 +181,60 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         default: return message
         }
     }
+}
+
+/// A non-interactive menu row: a title on the left, a secondary detail pinned to
+/// the right, and an optional status dot. Laid out to line up with the text of
+/// ordinary menu items.
+final class InfoRow: NSView {
+    // Where NSMenu starts an item's title, and the trailing gutter it leaves
+    // before key equivalents.
+    static let leading: CGFloat = 14
+    static let trailing: CGFloat = 14
+
+    init(title: String, detail: String, bold: Bool = false,
+         secondary: Bool = false, dot: NSColor? = nil) {
+        let font = NSFont.menuFont(ofSize: 0)
+        let left = NSTextField(labelWithString: title)
+        left.font = bold ? NSFont.boldSystemFont(ofSize: font.pointSize) : font
+        left.textColor = secondary ? .secondaryLabelColor : .labelColor
+        let right = NSTextField(labelWithString: detail)
+        right.font = font
+        right.textColor = .secondaryLabelColor
+        right.alignment = .right
+
+        var dotView: NSView?
+        if let dot {
+            let v = NSView()
+            v.wantsLayer = true
+            v.layer?.backgroundColor = dot.cgColor
+            v.layer?.cornerRadius = 3.5
+            dotView = v
+        }
+
+        left.sizeToFit()
+        right.sizeToFit()
+        let height: CGFloat = 22
+        let dotSpace: CGFloat = dotView == nil ? 0 : 13
+        let width = Self.leading + left.frame.width + 24 + dotSpace + right.frame.width + Self.trailing
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        autoresizingMask = [.width]
+
+        let y = ((height - left.frame.height) / 2).rounded()
+        left.frame.origin = NSPoint(x: Self.leading, y: y)
+        right.frame.origin = NSPoint(x: width - Self.trailing - right.frame.width, y: y)
+        right.autoresizingMask = [.minXMargin]
+        addSubview(left)
+        addSubview(right)
+        if let dotView {
+            dotView.frame = NSRect(x: right.frame.minX - 12, y: (height - 7) / 2, width: 7, height: 7)
+            dotView.autoresizingMask = [.minXMargin]
+            addSubview(dotView)
+        }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel(detail.isEmpty ? title : "\(title), \(detail)")
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
 }

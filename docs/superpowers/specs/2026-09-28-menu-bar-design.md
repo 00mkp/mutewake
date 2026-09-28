@@ -47,30 +47,36 @@ fully equivalent; the menu is an additional front end, not a replacement.
 
 ### Menu
 
-Icon: SF Symbol template image. `speaker.slash.fill` when on,
-`speaker.slash` with reduced alpha when off. It gets an accessibility
+Icon: SF Symbol template image, a sleeping speaker:
+`speaker.zzz.fill` when on, `speaker.zzz` dimmed when off. It gets an accessibility
 description ("mutewake: on" / "mutewake: off").
 
 ```
-mutewake is On                     (disabled title row)
-Audio: Muted                       (disabled; "Unmuted — volume 40%" otherwise)
+mutewake                   ● On    (status row; green dot when on)
+Audio                     Muted    (or the volume, e.g. "40%")
 ─────────
 Turn Off                  ⌘T       (toggles to "Turn On")
-Unmute Now                ⌘U       (only when audio is muted)
+Mute Now / Unmute Now     ⌘M/⌘U    (flips with the current audio state)
 ─────────
 Recent Activity                    (section header)
-  Muted on sleep · 2 min ago       (last 5 log entries, disabled rows)
+Muted on sleep       2 min. ago    (last 5 log entries)
 Open Log…                          (opens the log in Console)
 ─────────
-About mutewake 0.3.0               (standard About panel)
+About mutewake                     (standard About panel)
 Quit mutewake             ⌘Q
 ```
+
+Read-only rows (status, audio, activity) are custom `NSMenuItem.view`s rather
+than disabled items: NSMenu greys out every disabled item regardless of its
+attributed colors, which made them hard to read. The views align with the
+title and key-equivalent columns of ordinary items.
 
 - The menu is rebuilt in `menuNeedsUpdate(_:)`, so it is fresh on every open
   with no timers.
 - Turn On/Off from the menu writes or removes the flag file directly, the same
   as the CLI. The daemon never shells out to the CLI.
-- Unmute Now runs `set volume output muted false` through osascript.
+- Mute Now / Unmute Now toggle the output mute flag through osascript; the
+  volume level is untouched, so unmuting restores it.
 - If the log is missing or empty, Recent Activity shows "No activity yet".
 
 ## Code structure
