@@ -61,28 +61,35 @@ audio_muted() {
   [[ "$(osascript -e 'output muted of (get volume settings)' 2>/dev/null)" == "true" ]]
 }
 
+# On/off is just the flag file. A running daemon watches for it and updates its
+# menu bar icon, so it only needs starting when it isn't up at all (quit from the
+# menu, or a crash).
 cmd_on() {
   mkdir -p "$STATE_DIR"
   rm -f "$STATE"
-  if is_loaded; then
-    launchctl kickstart -k "$DOMAIN/$LABEL" >/dev/null 2>&1
-  else
-    launchctl bootstrap "$DOMAIN" "$PLIST" >/dev/null 2>&1
+  if [[ -z "$(daemon_pid)" ]]; then
+    if is_loaded; then
+      launchctl kickstart "$DOMAIN/$LABEL" >/dev/null 2>&1
+    else
+      launchctl bootstrap "$DOMAIN" "$PLIST" >/dev/null 2>&1
+    fi
+    sleep 1
   fi
-  sleep 1
   if [[ -n "$(daemon_pid)" ]]; then
-    print "mutewake: on — audio mutes on sleep, wake, and unlock"
+    print "mutewake: on — audio mutes on sleep, lock, wake, and unlock"
   else
     print "mutewake: on, but the daemon did not start. Check $ERRLOG" >&2
     return 1
   fi
 }
 
+# Leaves the daemon running on purpose: the menu bar icon has to stay so it can
+# turn the feature back on. The flag persists across reboots, and the daemon
+# ignores every event while it exists. Quit from the menu to stop it entirely.
 cmd_off() {
   mkdir -p "$STATE_DIR"
   : > "$STATE"
-  launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1
-  print "mutewake: off — normal operation, daemon stopped"
+  print "mutewake: off — nothing will be muted"
 }
 
 cmd_toggle() {
@@ -112,10 +119,12 @@ cmd_status() {
   else
     print "feature:  off"
   fi
-  if [[ -n "$pid" ]]; then
+  if [[ -z "$pid" ]]; then
+    print "daemon:   not running (start it with 'mutewake on')"
+  elif enabled; then
     print "daemon:   running (pid $pid)"
   else
-    print "daemon:   not running"
+    print "daemon:   running (pid $pid, idle — feature off)"
   fi
   if audio_muted; then
     print "audio:    muted"
@@ -262,8 +271,8 @@ cmd_help() {
   cat <<'USAGE'
 mutewake — mute system audio when the Mac sleeps, wakes, or is unlocked.
 
-  mutewake on         turn the feature on (starts the daemon)
-  mutewake off        turn it off (stops the daemon; survives reboot)
+  mutewake on         turn the feature on (starts the daemon if it isn't running)
+  mutewake off        turn it off (survives reboot; the menu bar icon stays)
   mutewake toggle     flip between on and off
   mutewake status     feature state, daemon state, current audio, recent events
   mutewake status -n N  same, showing the last N log entries (default 5)
@@ -276,6 +285,9 @@ mutewake — mute system audio when the Mac sleeps, wakes, or is unlocked.
 While on, closing the lid mutes output silently, and opening it or unlocking
 confirms with a banner. Muting at sleep means a Continuity call cannot ring a
 laptop that is asleep in your bag.
+
+The same controls live in the menu bar icon. Quitting it from there stops the
+daemon until your next login or 'mutewake on'.
 
 Your volume level is preserved — tap volume-up to come back.
 The log is trimmed to its last 500 entries each time the daemon starts.

@@ -41,26 +41,43 @@ osascript -e 'set volume output muted true'
 sleep 5; swift "$POST"; sleep 2
 check "logs already-muted rather than re-muting" 'grep -q "already muted" "$LOG"'
 
-print "\\n[5] off stops the daemon"
+print "\\n[5] off keeps the daemon up, idle"
+before="$(pid)"
 mutewake off >/dev/null; sleep 1
-check "daemon stopped" '[[ -z "$(pid)" ]]'
+check "daemon still running" '[[ -n "$(pid)" ]]'
+check "same process (not restarted)" '[[ "$(pid)" == "$before" ]]'
 check "state file written" '[[ -f "$HOME/.config/mutewake/disabled" ]]'
+check "daemon noticed the CLI toggle" 'grep -q "feature: off" "$LOG"'
+check "status reports idle" 'mutewake status | grep -q "idle — feature off"'
 
 print "\\n[6] off survives a reboot (simulated re-bootstrap)"
-launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; sleep 3
-check "daemon exits itself when disabled" '[[ -z "$(pid)" ]]'
-check "log explains the clean exit" 'grep -q "disabled, exiting" "$LOG"'
+launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null; sleep 1
+launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; sleep 2
+check "daemon comes back up while off" '[[ -n "$(pid)" ]]'
+check "log records the disabled start" 'grep -q "feature off)" "$LOG"'
 
 print "\\n[7] while off, a wake event does nothing"
 osascript -e 'set volume output muted false'
 swift "$POST"; sleep 2
 check "audio stays unmuted while off" '! muted'
+check "event logged as skipped" 'grep -q "unlock: skipped (disabled)" "$LOG"'
 
 print "\\n[8] toggle round-trip"
+before="$(pid)"
 mutewake toggle >/dev/null; sleep 1
-check "toggle turned it on" '[[ -n "$(pid)" && ! -f "$HOME/.config/mutewake/disabled" ]]'
+check "toggle turned it on" '[[ ! -f "$HOME/.config/mutewake/disabled" ]]'
+check "daemon noticed it" 'grep -q "feature: on" "$LOG"'
 mutewake toggle >/dev/null; sleep 1
-check "toggle turned it off" '[[ -z "$(pid)" && -f "$HOME/.config/mutewake/disabled" ]]'
+check "toggle turned it off" '[[ -f "$HOME/.config/mutewake/disabled" ]]'
+check "daemon stayed up throughout" '[[ "$(pid)" == "$before" ]]'
+
+print "\\n[8b] quit leaves it down; on brings it back"
+osascript -e 'tell application id "io.github.00mkp.mutewake" to quit' 2>/dev/null; sleep 2
+check "quit stops the daemon" '[[ -z "$(pid)" ]]'
+sleep 2
+check "launchd does not respawn after quit" '[[ -z "$(pid)" ]]'
+mutewake on >/dev/null
+check "on restarts it" '[[ -n "$(pid)" && ! -f "$HOME/.config/mutewake/disabled" ]]'
 
 print "\\n[9] unknown command is rejected"
 mutewake bogus >/dev/null 2>&1

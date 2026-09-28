@@ -53,7 +53,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST_EOF
 </plist>
 PLIST_EOF
 
-swiftc -O -o "$APP/Contents/MacOS/mutewake" "$SRC/src/main.swift"
+swiftc -O -o "$APP/Contents/MacOS/mutewake" "$SRC"/src/*.swift
 # Ad-hoc signature: enough for macOS to run it locally, and it never leaves this
 # machine, so no Developer ID or notarization is involved.
 codesign --force --sign - --identifier "$LABEL" "$APP" >/dev/null 2>&1 || true
