@@ -120,7 +120,11 @@ cmd_status() {
     print "feature:  off"
   fi
   if [[ -z "$pid" ]]; then
-    print "daemon:   not running (start it with 'mutewake on')"
+    if enabled; then
+      print "daemon:   not running (start it with 'mutewake on')"
+    else
+      print "daemon:   not running (starts at next login; 'mutewake on' starts it now and turns muting on)"
+    fi
   elif enabled; then
     print "daemon:   running (pid $pid)"
   else

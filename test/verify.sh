@@ -93,6 +93,12 @@ mutewake update "$TMPDIR" >/dev/null 2>&1
 check "rejects a directory that is not a source tree" '[[ $? -ne 0 ]]'
 rm -f "$TMPDIR/mw-notes.txt"
 
+print "\\n[11] reinstall keeps the feature off"
+mutewake off >/dev/null
+bash "${0:A:h}/../install.sh" >/dev/null 2>&1
+check "flag survives a reinstall" '[[ -f "$HOME/.config/mutewake/disabled" ]]'
+check "daemon running after reinstall" '[[ -n "$(pid)" ]]'
+
 mutewake on >/dev/null
 print "\n----- $pass passed, $fail failed -----"
 [[ $fail -eq 0 ]]

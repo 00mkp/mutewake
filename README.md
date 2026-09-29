@@ -142,6 +142,9 @@ running at the new version before reporting success. `--ff-only` is deliberate:
 a plain pull would silently create a merge commit in your checkout if upstream
 history were ever rewritten.
 
+Updating (or rerunning `install.sh`) keeps mutewake on or off as you left it; only
+a first install switches it on.
+
 If you installed from a tarball rather than a clone, point it at a source tree:
 
 ```sh

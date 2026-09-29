@@ -87,8 +87,18 @@ func osascript(_ script: String) -> String {
         log("osascript launch failed: \(error.localizedDescription)")
         return ""
     }
+    // Everything calls this on the main thread, so a wedged osascript (say,
+    // coreaudiod stuck mid device switch) would freeze the menu and every later
+    // sleep/wake handler with it. Kill it rather than wait forever.
+    let deadline = DispatchWorkItem {
+        guard p.isRunning else { return }
+        log("osascript timed out: \(script)")
+        p.terminate()
+    }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 3, execute: deadline)
     let data = out.fileHandleForReading.readDataToEndOfFile()
     p.waitUntilExit()
+    deadline.cancel()
     return String(data: data, encoding: .utf8)?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 }
