@@ -31,8 +31,8 @@ cd mutewake
 Or from a [release](https://github.com/00mkp/mutewake/releases) archive:
 
 ```sh
-curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.3.0.tar.gz | tar -xz
-cd mutewake-0.3.0
+curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.3.1.tar.gz | tar -xz
+cd mutewake-0.3.1
 ./install.sh
 ```
 
@@ -59,7 +59,7 @@ mutewake uninstall    remove the daemon, agent, state, and logs
 
 ```
 $ mutewake status
-version:  0.3.0
+version:  0.3.1
 feature:  on
 daemon:   running (pid 13958)
 audio:    muted
@@ -150,7 +150,7 @@ a first install switches it on.
 If you installed from a tarball rather than a clone, point it at a source tree:
 
 ```sh
-mutewake update ~/Downloads/mutewake-0.3.0.tar.gz
+mutewake update ~/Downloads/mutewake-0.3.1.tar.gz
 mutewake update ~/some/checkout
 ```
 
