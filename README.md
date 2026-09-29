@@ -31,8 +31,8 @@ cd mutewake
 Or from a [release](https://github.com/00mkp/mutewake/releases) archive:
 
 ```sh
-curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.2.0.tar.gz | tar -xz
-cd mutewake-0.2.0
+curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.3.0.tar.gz | tar -xz
+cd mutewake-0.3.0
 ./install.sh
 ```
 
@@ -47,8 +47,8 @@ never hit Gatekeeper quarantine — and so you can read exactly what you're runn
 ## Usage
 
 ```
-mutewake on           turn the feature on (starts the daemon)
-mutewake off          turn it off (stops the daemon; survives reboot)
+mutewake on           turn the feature on (starts the daemon if needed)
+mutewake off          turn it off (survives reboot; the menu bar icon stays)
 mutewake toggle       flip between on and off
 mutewake status       feature state, daemon state, current audio, recent events
 mutewake status -n N  same, showing the last N log entries (default 5)
@@ -59,7 +59,7 @@ mutewake uninstall    remove the daemon, agent, state, and logs
 
 ```
 $ mutewake status
-version:  0.2.0
+version:  0.3.0
 feature:  on
 daemon:   running (pid 13958)
 audio:    muted
@@ -71,9 +71,24 @@ recent:
 To get sound back, tap the volume-up key. mutewake **mutes** rather than setting
 the volume to zero, so your level is preserved.
 
+## Menu bar
+
+The daemon also puts an icon in the menu bar — a sleeping speaker, dimmed while
+the feature is off. Clicking it shows:
+
+- whether mutewake is on, and whether audio is currently muted
+- **Turn On / Turn Off** (⌘T) — the same switch as `mutewake on|off`
+- **Mute Now** (⌘M) / **Unmute Now** (⌘U) — unmuting restores your previous level
+- **Recent Activity** — the last five events, e.g. "Muted on sleep · 2 min ago"
+- **Open Log…**, **About**, and **Quit** (⌘Q)
+
+The menu and the CLI share one on/off switch, so they never disagree: turn it off
+in a terminal and the icon dims immediately. **Quit** stops the daemon entirely
+until your next login or `mutewake on`; while quit, nothing is muted.
+
 ## How it works
 
-A small Swift agent subscribes to three events and sleeps in between — it polls
+A small Swift agent subscribes to four events and sleeps in between — it polls
 nothing and uses no measurable CPU:
 
 | Event | Behavior |
@@ -93,12 +108,16 @@ seconds of each other are collapsed to avoid a duplicate banner. If the machine
 was muted on the way out, the next return reports it — otherwise muting on leave
 would leave nothing for the banner to say.
 
-`mutewake off` writes a state file *and* stops the agent. The daemon re-checks
-that file at startup and exits cleanly if it's set, and the agent is configured
-with `KeepAlive: { SuccessfulExit: false }` so launchd won't respawn it. That
-combination is what makes "off" survive a reboot with no process left running —
-`launchctl bootout` alone would not, because launchd re-bootstraps user agents
-at every login.
+`mutewake off` only writes a state file. The daemon keeps running — the menu bar
+icon has to stay so you can turn the feature back on from it — and checks the file
+on every event, doing nothing while it exists. Because the flag lives on disk,
+"off" survives a reboot: at login the daemon starts, sees it, and sits idle with a
+dimmed icon. It watches the config directory with a kernel file event (no
+polling), which is how a toggle from the terminal reaches the menu.
+
+Quit from the menu exits cleanly, and the agent is configured with
+`KeepAlive: { SuccessfulExit: false }`, so launchd won't respawn it until the next
+login or `mutewake on`.
 
 Everything it touches:
 
@@ -122,6 +141,9 @@ mutewake update
 running at the new version before reporting success. `--ff-only` is deliberate:
 a plain pull would silently create a merge commit in your checkout if upstream
 history were ever rewritten.
+
+Updating (or rerunning `install.sh`) keeps mutewake on or off as you left it; only
+a first install switches it on.
 
 If you installed from a tarball rather than a clone, point it at a source tree:
 

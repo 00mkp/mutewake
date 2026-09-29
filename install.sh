@@ -53,7 +53,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST_EOF
 </plist>
 PLIST_EOF
 
-swiftc -O -o "$APP/Contents/MacOS/mutewake" "$SRC/src/main.swift"
+swiftc -O -o "$APP/Contents/MacOS/mutewake" "$SRC"/src/*.swift
 # Ad-hoc signature: enough for macOS to run it locally, and it never leaves this
 # machine, so no Developer ID or notarization is involved.
 codesign --force --sign - --identifier "$LABEL" "$APP" >/dev/null 2>&1 || true
@@ -90,6 +90,11 @@ cat > "$PLIST" <<PLIST_EOF
 PLIST_EOF
 plutil -lint "$PLIST" >/dev/null || die "generated plist is malformed"
 
+# Checked before the manifest is rewritten: a reinstall or `mutewake update` must
+# keep the user's on/off choice, and only a first install switches the feature on.
+FIRST_INSTALL=0
+[[ -f "$MANIFEST" ]] || FIRST_INSTALL=1
+
 echo "==> Recording the install manifest"
 # `mutewake update` needs to know where this tree lives: the installed CLI is a
 # copy and would otherwise have no way back to the source.
@@ -100,7 +105,9 @@ installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 MANIFEST_EOF
 
 echo "==> Starting"
-rm -f "$HOME/.config/mutewake/disabled"
+if (( FIRST_INSTALL )); then
+  rm -f "$HOME/.config/mutewake/disabled"
+fi
 launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null || true
 sleep 1
 
@@ -110,6 +117,9 @@ fi
 
 echo
 echo "mutewake $VERSION is installed and running."
+if [[ -f "$HOME/.config/mutewake/disabled" ]]; then
+  echo "The feature is still off, as you left it. Turn it on with: mutewake on"
+fi
 case ":$PATH:" in
   *":$BINDIR:"*) ;;
   *) echo
