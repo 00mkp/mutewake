@@ -76,6 +76,8 @@ the volume to zero, so your level is preserved.
 The daemon also puts an icon in the menu bar — a sleeping speaker, dimmed while
 the feature is off. Clicking it shows:
 
+<img src="docs/images/menu.png" alt="The mutewake menu: status, audio, Turn Off, Unmute Now, recent activity, Open Log, About, Quit" width="277">
+
 - whether mutewake is on, and whether audio is currently muted
 - **Turn On / Turn Off** (⌘T) — the same switch as `mutewake on|off`
 - **Mute Now** (⌘M) / **Unmute Now** (⌘U) — unmuting restores your previous level
