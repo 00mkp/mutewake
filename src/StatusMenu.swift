@@ -3,6 +3,12 @@ import AppKit
 // The menu bar item. A plain NSMenu on purpose: it is the system menu, so light
 // and dark mode, accessibility, and keyboard navigation all come for free.
 final class StatusMenu: NSObject, NSMenuDelegate {
+    // A sleeping speaker rather than a plain mute glyph: it reads as "audio +
+    // sleep", and doesn't blend in with the system's own volume controls. One
+    // name for the menu bar and the About panel, so they can't drift apart.
+    static let symbolOn = "speaker.zzz.fill"
+    static let symbolOff = "speaker.zzz"
+
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     let menu = NSMenu()
 
@@ -23,9 +29,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     func refreshIcon() {
         let on = !isDisabled()
         let label = on ? "mutewake: on" : "mutewake: off"
-        // A sleeping speaker rather than a plain mute glyph: it reads as "audio +
-        // sleep", and doesn't blend in with the system's own volume controls.
-        let image = NSImage(systemSymbolName: on ? "speaker.zzz.fill" : "speaker.zzz",
+        let image = NSImage(systemSymbolName: on ? Self.symbolOn : Self.symbolOff,
                             accessibilityDescription: label)
         image?.isTemplate = true
         item.button?.image = image
@@ -97,7 +101,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func about() {
-        let icon = NSImage(systemSymbolName: "speaker.slash.fill", accessibilityDescription: nil)?
+        let icon = NSImage(systemSymbolName: Self.symbolOn, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 48, weight: .regular))
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "mutewake",
