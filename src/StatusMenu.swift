@@ -175,6 +175,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         default: break
         }
         if message.hasPrefix("daemon start") { return "Started" }
+        if message.hasPrefix("banner skipped") { return "Banner off in Notifications settings" }
+        if message.hasPrefix("banner via Script Editor") { return "Banner sent via Script Editor" }
+        if message.hasPrefix("notifications: allowed") { return "Notifications allowed" }
+        if message.hasPrefix("notifications: declined") { return "Notifications declined" }
+        if message.hasPrefix("notifications unavailable") { return "Notifications unavailable" }
 
         let parts = message.split(separator: ":", maxSplits: 1)
         guard parts.count == 2 else { return message }

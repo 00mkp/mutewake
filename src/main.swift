@@ -26,6 +26,8 @@ final class Delegate: NSObject, NSApplicationDelegate {
             forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main
         ) { _ in handleWake("unlock") }
 
+        Notifier.shared.activate()
+
         let menu = StatusMenu()
         self.menu = menu
         watcher = StateWatcher { _ in menu.refreshIcon() }

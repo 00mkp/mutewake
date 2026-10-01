@@ -131,12 +131,3 @@ func audioState() -> (muted: Bool, volume: Int)? {
     else { return nil }
     return (muted == "true", volume)
 }
-
-func notify(_ body: String) {
-    // Banners are posted via osascript rather than UserNotifications: an ad-hoc
-    // signed, non-notarized bundle cannot register with the notification center,
-    // so UNUserNotificationCenter always returns "not allowed". The banner is
-    // therefore attributed to Script Editor, but carries the mutewake title.
-    let escaped = body.replacingOccurrences(of: "\"", with: "")
-    osascript("display notification \"\(escaped)\" with title \"mutewake\"")
-}
