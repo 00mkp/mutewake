@@ -31,8 +31,8 @@ cd mutewake
 Or from a [release](https://github.com/00mkp/mutewake/releases) archive:
 
 ```sh
-curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.4.0.tar.gz | tar -xz
-cd mutewake-0.4.0
+curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.4.1.tar.gz | tar -xz
+cd mutewake-0.4.1
 ./install.sh
 ```
 
@@ -61,7 +61,7 @@ mutewake uninstall    remove the daemon, agent, state, and logs
 
 ```
 $ mutewake status
-version:  0.4.0
+version:  0.4.1
 feature:  on
 daemon:   running (pid 13958)
 audio:    muted
@@ -160,7 +160,7 @@ a first install switches it on.
 If you installed from a tarball rather than a clone, point it at a source tree:
 
 ```sh
-mutewake update ~/Downloads/mutewake-0.4.0.tar.gz
+mutewake update ~/Downloads/mutewake-0.4.1.tar.gz
 mutewake update ~/some/checkout
 ```
 
@@ -182,18 +182,30 @@ Semver in the `VERSION` file at the repo root. `install.sh` reads it, stamps it
 into the app bundle and the install manifest at
 `~/.local/share/mutewake/manifest`, and `mutewake status` reports it.
 
-## Known limitation: banner attribution
+## Notifications
 
-The "Audio muted" banner is attributed to **Script Editor**, not to mutewake.
+The wake/unlock banner comes from mutewake itself. The first time it runs, macOS
+asks whether mutewake may send notifications; allow it and banners show
+mutewake's name and icon. They never play a sound.
 
-This isn't an oversight. macOS refuses to register an ad-hoc-signed,
-non-notarized app with the notification center — `UNUserNotificationCenter`
-returns `Notifications are not allowed for this application` and never shows a
-permission prompt. Moving the bundle to `~/Applications`, launching it through
-LaunchServices, `lsregister`, adding the full complement of `Info.plist` keys,
-and embedding the plist in the binary all make no difference. Posting through
-`osascript` works reliably, so that's what it does. Fixing the attribution
-properly requires a paid Apple Developer ID.
+- **Turned them off?** mutewake respects that and shows no banner. The menu's
+  Recent Activity says "Banner off in Notifications settings" when one was
+  skipped, and **System Settings → Notifications → mutewake** turns them back on.
+- **Notification center unavailable?** If macOS rejects the permission request
+  outright, mutewake falls back to posting through `osascript`, which macOS
+  attributes to Script Editor. A rejected request can also leave mutewake marked
+  "off" in System Settings; switching it on there fixes it.
+
+**Rebuilding resets the permission.** mutewake is ad-hoc signed, and macOS
+identifies an ad-hoc app by a hash of its exact binary, so every `install.sh` or
+`mutewake update` looks like a new app. After an update, re-enable mutewake in
+System Settings → Notifications. (A stable local signing identity would fix this;
+it isn't done yet.)
+
+Earlier versions always used the Script Editor route, because every build was
+stamped with a minimum macOS newer than the one it ran on, and LaunchServices
+refused to register it — which the notification center needs. 0.4.0 fixed the
+build target, and 0.4.1 switched to native notifications.
 
 ## Testing
 
