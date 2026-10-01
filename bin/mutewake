@@ -6,7 +6,6 @@ set -uo pipefail
 LABEL="io.github.00mkp.mutewake"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LIBDIR="$HOME/.local/share/mutewake"
-APP="$LIBDIR/mutewake.app"
 SELF="$HOME/.local/bin/mutewake"
 MANIFEST="$LIBDIR/manifest"
 STATE_DIR="$HOME/.config/mutewake"
@@ -151,9 +150,13 @@ cmd_uninstall() {
   # function fails with "command not found".
   # Only ever removes what install.sh created. A source checkout is the user's
   # own copy and is never touched.
-  local target
+  local target app
   local removed=() failed=()
-  for target in "$PLIST" "$LIBDIR" "$STATE_DIR" "$LOG" "$ERRLOG" "$SELF"; do
+  # The app lives wherever install.sh put it (~/Applications unless APP_DIR was
+  # set), which only the manifest knows - so read it before LIBDIR goes.
+  app="$(manifest_get app)" || app=""
+  [[ "$app" == */mutewake.app ]] || app="$HOME/Applications/mutewake.app"
+  for target in "$PLIST" "$app" "$LIBDIR" "$STATE_DIR" "$LOG" "$ERRLOG" "$SELF"; do
     [[ -e "$target" ]] || continue
     if rm -rf "$target" 2>/dev/null; then
       removed+=("$target")

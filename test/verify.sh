@@ -99,6 +99,39 @@ bash "${0:A:h}/../install.sh" >/dev/null 2>&1
 check "flag survives a reinstall" '[[ -f "$HOME/.config/mutewake/disabled" ]]'
 check "daemon running after reinstall" '[[ -n "$(pid)" ]]'
 
+print "\\n[12] installed as an app; opening it hands off to launchd"
+APPDIR="$HOME/Applications/mutewake.app"
+procs() { pgrep -f "mutewake.app/Contents/MacOS/mutewake" | wc -l | tr -d ' ' }
+check "app is in ~/Applications" '[[ -x "$APPDIR/Contents/MacOS/mutewake" ]]'
+check "app has an icon" '[[ -f "$APPDIR/Contents/Resources/mutewake.icns" ]]'
+check "no legacy copy under ~/.local/share" '[[ ! -e "$HOME/.local/share/mutewake/mutewake.app" ]]'
+check "agent runs the ~/Applications copy" 'grep -q "$APPDIR/Contents/MacOS/mutewake" "$PLIST"'
+osascript -e 'tell application id "io.github.00mkp.mutewake" to quit' 2>/dev/null; sleep 2
+# launchd won't relaunch a job within 10s of its last start (it was just
+# reinstalled in [11]), so poll rather than sleep a fixed time.
+open "$APPDIR"
+for _ in {1..24}; do [[ -n "$(pid)" ]] && break; sleep 0.5; done
+sleep 1
+check "opening the app after quit restarts the daemon" '[[ -n "$(pid)" ]]'
+check "exactly one instance (the launchd one)" '[[ "$(procs)" == 1 ]]'
+open "$APPDIR"; sleep 5
+check "opening it again does not start a second" '[[ "$(procs)" == 1 ]]'
+
+print "\\n[13] APP_DIR: spelling-proof, remembered, and movable"
+INSTALL="${0:A:h}/../install.sh"
+ALT="$(mktemp -d)/apps"
+APP_DIR="$HOME/Applications/" bash "$INSTALL" >/dev/null 2>&1
+bash "$INSTALL" >/dev/null 2>&1
+check "trailing slash then plain reinstall keeps the app" '[[ -x "$APPDIR/Contents/MacOS/mutewake" && -n "$(pid)" ]]'
+APP_DIR="$ALT" bash "$INSTALL" >/dev/null 2>&1
+check "custom APP_DIR installs there" '[[ -x "$ALT/mutewake.app/Contents/MacOS/mutewake" ]]'
+check "and removes the old copy" '[[ ! -e "$APPDIR" ]]'
+bash "$INSTALL" >/dev/null 2>&1
+check "a plain reinstall stays in the custom APP_DIR" '[[ -x "$ALT/mutewake.app/Contents/MacOS/mutewake" && ! -e "$APPDIR" ]]'
+APP_DIR="$HOME/Applications" bash "$INSTALL" >/dev/null 2>&1
+check "moving back to ~/Applications cleans up" '[[ -x "$APPDIR/Contents/MacOS/mutewake" && ! -e "$ALT/mutewake.app" && -n "$(pid)" ]]'
+rm -rf "${ALT:h}"
+
 mutewake on >/dev/null
 print "\n----- $pass passed, $fail failed -----"
 [[ $fail -eq 0 ]]
