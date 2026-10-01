@@ -1,14 +1,17 @@
 #!/bin/bash
 # mutewake installer.
 #
-# Builds the daemon from source, generates the launchd agent for THIS machine,
-# and starts it. The agent plist cannot be shipped as a static file: launchd does
-# not expand "~", so the absolute path has to be written at install time.
+# Builds mutewake.app from source into $APP_DIR (default ~/Applications),
+# generates the launchd agent for THIS machine, and starts it. The agent plist
+# cannot be shipped as a static file: launchd does not expand "~", so the
+# absolute path has to be written at install time.
 set -euo pipefail
 
 LABEL="io.github.00mkp.mutewake"
 LIBDIR="$HOME/.local/share/mutewake"
-APP="$LIBDIR/mutewake.app"
+APP_DIR="${APP_DIR:-$HOME/Applications}"
+case "$APP_DIR" in /*) ;; *) APP_DIR="$PWD/$APP_DIR" ;; esac   # relative to where you ran it
+APP="$APP_DIR/mutewake.app"
 BINDIR="$HOME/.local/bin"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
@@ -28,12 +31,15 @@ if ! command -v swiftc >/dev/null 2>&1; then
     xcode-select --install"
 fi
 
-echo "==> Stopping any running instance"
-launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+# Built in a staging directory and moved into place only once it is complete, so
+# a failed build leaves the installed copy untouched and still running.
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+BUILD="$STAGE/mutewake.app"
 
-echo "==> Building the daemon"
-mkdir -p "$APP/Contents/MacOS" "$BINDIR"
-cat > "$APP/Contents/Info.plist" <<PLIST_EOF
+echo "==> Building mutewake.app"
+mkdir -p "$BUILD/Contents/MacOS" "$BUILD/Contents/Resources" "$BINDIR"
+cat > "$BUILD/Contents/Info.plist" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -46,6 +52,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST_EOF
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 	<key>CFBundleShortVersionString</key><string>$VERSION</string>
 	<key>CFBundleVersion</key><string>1</string>
+	<key>CFBundleIconFile</key><string>mutewake</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+	<key>NSHighResolutionCapable</key><true/>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
 	<key>LSMinimumSystemVersion</key><string>13.0</string>
 	<key>LSUIElement</key><true/>
@@ -53,10 +62,44 @@ cat > "$APP/Contents/Info.plist" <<PLIST_EOF
 </plist>
 PLIST_EOF
 
-swiftc -O -o "$APP/Contents/MacOS/mutewake" "$SRC"/src/*.swift
+# Pin the deployment target to match LSMinimumSystemVersion. Left to itself,
+# swiftc stamps the toolchain's own default (newer than the running OS), and
+# while launchd ignores that, LaunchServices then refuses to open the app from
+# Finder or Spotlight.
+swiftc -O -target "$(uname -m)-apple-macos13.0" \
+  -o "$BUILD/Contents/MacOS/mutewake" "$SRC"/src/*.swift
+
+echo "==> Drawing the app icon"
+swiftc -O -o "$STAGE/make-icon" "$SRC/tools/make-icon.swift"
+"$STAGE/make-icon" "$STAGE/mutewake.iconset"
+iconutil -c icns "$STAGE/mutewake.iconset" -o "$BUILD/Contents/Resources/mutewake.icns"
+
 # Ad-hoc signature: enough for macOS to run it locally, and it never leaves this
 # machine, so no Developer ID or notarization is involved.
-codesign --force --sign - --identifier "$LABEL" "$APP" >/dev/null 2>&1 || true
+codesign --force --sign - --identifier "$LABEL" "$BUILD" >/dev/null 2>&1 || true
+
+# Where the previous install put the app: the manifest's record, or the pre-0.4
+# location under ~/.local/share. Removed below once the new copy is in place,
+# so moving APP_DIR (or upgrading) never leaves a second copy behind.
+PREV_APP="$LIBDIR/mutewake.app"
+if [[ -f "$MANIFEST" ]]; then
+  recorded="$(awk -F= '$1=="app"{sub(/^[^=]*=/,""); print; exit}' "$MANIFEST")"
+  [[ -n "$recorded" ]] && PREV_APP="$recorded"
+fi
+
+echo "==> Stopping any running instance"
+launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+
+echo "==> Installing $APP"
+mkdir -p "$APP_DIR"
+rm -rf "$APP"
+mv "$BUILD" "$APP"
+if [[ "$PREV_APP" != "$APP" && "$PREV_APP" == */mutewake.app && -d "$PREV_APP" ]]; then
+  rm -rf "$PREV_APP"
+  echo "    removed the previous copy at $PREV_APP"
+fi
+# Register with LaunchServices now, so Spotlight and Launchpad find it at once.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true
 
 echo "==> Installing the mutewake command"
 install -m 755 "$SRC/bin/mutewake" "$BINDIR/mutewake"
@@ -94,6 +137,7 @@ plutil -lint "$PLIST" >/dev/null || die "generated plist is malformed"
 # keep the user's on/off choice, and only a first install switches the feature on.
 FIRST_INSTALL=0
 [[ -f "$MANIFEST" ]] || FIRST_INSTALL=1
+mkdir -p "$LIBDIR"
 
 echo "==> Recording the install manifest"
 # `mutewake update` needs to know where this tree lives: the installed CLI is a
@@ -101,6 +145,7 @@ echo "==> Recording the install manifest"
 cat > "$MANIFEST" <<MANIFEST_EOF
 version=$VERSION
 source=$SRC
+app=$APP
 installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 MANIFEST_EOF
 
@@ -127,5 +172,6 @@ case ":$PATH:" in
      echo "    export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
 esac
 echo
+echo "It lives at $APP — its icon is the sleeping speaker in your menu bar."
 echo "Try:  mutewake status"
 echo "Off:  mutewake off"

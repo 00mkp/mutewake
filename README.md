@@ -40,9 +40,11 @@ Cloning is worth preferring: `install.sh` records where it ran from, so a clone
 gives you working `mutewake update` afterwards. Installing from an archive records
 the extracted directory instead, so later updates need an explicit path.
 
-The installer builds the daemon from source, generates a launchd agent for your
-account, and starts it. It builds locally rather than shipping a binary so you
-never hit Gatekeeper quarantine — and so you can read exactly what you're running.
+The installer builds **mutewake.app** from source into `~/Applications`, generates
+a launchd agent for your account, and starts it. It builds locally rather than
+shipping a binary so you never hit Gatekeeper quarantine — and so you can read
+exactly what you're running. Set `APP_DIR` to install the app somewhere else, e.g.
+`APP_DIR=/Applications ./install.sh`.
 
 ## Usage
 
@@ -86,7 +88,9 @@ the feature is off. Clicking it shows:
 
 The menu and the CLI share one on/off switch, so they never disagree: turn it off
 in a terminal and the icon dims immediately. **Quit** stops the daemon entirely
-until your next login or `mutewake on`; while quit, nothing is muted.
+until your next login or `mutewake on`; while quit, nothing is muted. Opening
+mutewake from Spotlight, Launchpad, or Finder brings it back too — and if it's
+already running, opening it shows the menu.
 
 ## How it works
 
@@ -119,14 +123,20 @@ polling), which is how a toggle from the terminal reaches the menu.
 
 Quit from the menu exits cleanly, and the agent is configured with
 `KeepAlive: { SuccessfulExit: false }`, so launchd won't respawn it until the next
-login or `mutewake on`.
+login, `mutewake on`, or you open the app.
+
+launchd always owns the running copy. Opening the app by hand would otherwise
+start a second, unmanaged instance, so a hand-opened copy instead asks launchd to
+start the real one (a no-op if it's already up), tells it to show its menu, and
+exits. It tells the two apart by `XPC_SERVICE_NAME`, which launchd sets to the
+agent's label.
 
 Everything it touches:
 
 ```
 ~/.local/bin/mutewake                          the CLI
-~/.local/share/mutewake/mutewake.app           the daemon
-~/.local/share/mutewake/manifest               version + source path
+~/Applications/mutewake.app                    the app (menu bar + daemon)
+~/.local/share/mutewake/manifest               version, source, and app path
 ~/Library/LaunchAgents/io.github.00mkp.mutewake.plist
 ~/.config/mutewake/disabled                    present only when off
 ~/Library/Logs/mutewake.log                    trimmed to 500 lines at startup
@@ -192,9 +202,11 @@ properly requires a paid Apple Developer ID.
 ```
 
 Integration tests against the real launchd agent and real audio state: muting on
-lock and unlock, debounce, the no-op path, `off` stopping the daemon, `off`
-surviving a simulated reboot, toggle round-trips, and argument rejection. It toggles your actual audio
-while running and leaves the feature on.
+lock and unlock, debounce, the no-op path, `off` leaving the daemon idle, `off`
+surviving a simulated reboot and a reinstall, toggle round-trips, quit and
+restart, the app's install location, opening it handing off to launchd, and
+argument rejection. It toggles your actual audio while running, opens the menu
+once, and leaves the feature on.
 
 The sleep path isn't covered — `NSWorkspace` rejects externally posted
 notifications, so `willSleep` can only be exercised by genuinely sleeping the
@@ -206,7 +218,7 @@ machine.
 mutewake uninstall
 ```
 
-Removes the agent, daemon, state, logs, and the command itself. Your source
+Removes the agent, the app, state, logs, and the command itself. Your source
 checkout is left alone.
 
 ## License

@@ -4,8 +4,8 @@ import AppKit
 // and dark mode, accessibility, and keyboard navigation all come for free.
 final class StatusMenu: NSObject, NSMenuDelegate {
     // A sleeping speaker rather than a plain mute glyph: it reads as "audio +
-    // sleep", and doesn't blend in with the system's own volume controls. One
-    // name for the menu bar and the About panel, so they can't drift apart.
+    // sleep", and doesn't blend in with the system's own volume controls. The
+    // app icon (tools/make-icon.swift) draws the same symbol; keep them in step.
     static let symbolOn = "speaker.zzz.fill"
     static let symbolOff = "speaker.zzz"
 
@@ -36,6 +36,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         // Dimmed the same way the system dims its own inactive menu bar extras.
         item.button?.appearsDisabled = !on
         item.button?.toolTip = label
+    }
+
+    /// Pops the menu open, as if the icon had been clicked.
+    func open() {
+        item.button?.performClick(nil)
     }
 
     // Rebuilt on every open, so everything shown is current without any timers.
@@ -101,9 +106,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func about() {
-        let icon = NSImage(systemSymbolName: Self.symbolOn, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 48, weight: .regular))
-        var options: [NSApplication.AboutPanelOptionKey: Any] = [
+        // No icon option: the panel shows the bundle's app icon, the same one
+        // Finder and Launchpad show.
+        let options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "mutewake",
             .applicationVersion: appVersion,
             .version: "",
@@ -112,7 +117,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
                 attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                              .foregroundColor: NSColor.secondaryLabelColor]),
         ]
-        if let icon { options[.applicationIcon] = icon }
         // An accessory app has to activate itself or the panel opens behind
         // whatever is frontmost.
         NSApp.activate(ignoringOtherApps: true)
