@@ -9,9 +9,6 @@ set -euo pipefail
 
 LABEL="io.github.00mkp.mutewake"
 LIBDIR="$HOME/.local/share/mutewake"
-APP_DIR="${APP_DIR:-$HOME/Applications}"
-case "$APP_DIR" in /*) ;; *) APP_DIR="$PWD/$APP_DIR" ;; esac   # relative to where you ran it
-APP="$APP_DIR/mutewake.app"
 BINDIR="$HOME/.local/bin"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
@@ -21,6 +18,30 @@ MANIFEST="$LIBDIR/manifest"
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || die "mutewake is macOS-only (this is $(uname -s))."
+
+# Where the previous install put the app: the manifest's record, or the pre-0.4
+# location under ~/.local/share. Removed once the new copy is in place, so
+# moving APP_DIR (or upgrading) never leaves a second copy behind.
+PREV_APP="$LIBDIR/mutewake.app"
+recorded=""
+if [[ -f "$MANIFEST" ]]; then
+  recorded="$(awk -F= '$1=="app"{sub(/^[^=]*=/,""); print; exit}' "$MANIFEST")"
+  [[ -n "$recorded" ]] && PREV_APP="$recorded"
+fi
+
+# APP_DIR defaults to wherever the last install went, so a plain `mutewake
+# update` never silently moves an app installed with APP_DIR=/Applications.
+if [[ -z "${APP_DIR:-}" ]]; then
+  if [[ -n "$recorded" ]]; then APP_DIR="$(dirname "$recorded")"; else APP_DIR="$HOME/Applications"; fi
+fi
+case "$APP_DIR" in /*) ;; *) APP_DIR="$PWD/$APP_DIR" ;; esac   # relative to where you ran it
+# Checked now, before anything is stopped: failing later would leave the agent
+# down. Then canonicalized, so "~/Applications/" and "~/Applications" (or a
+# symlinked path) are recognised as the same place below.
+mkdir -p "$APP_DIR" 2>/dev/null || die "cannot create $APP_DIR"
+[[ -w "$APP_DIR" ]] || die "$APP_DIR is not writable. Pick another APP_DIR (the default ~/Applications needs no admin rights)."
+APP_DIR="$(cd "$APP_DIR" && pwd -P)"
+APP="$APP_DIR/mutewake.app"
 
 [[ -f "$SRC/VERSION" ]] || die "$SRC/VERSION is missing; this is not a complete source tree."
 VERSION="$(tr -d '[:space:]' < "$SRC/VERSION")"
@@ -78,25 +99,21 @@ iconutil -c icns "$STAGE/mutewake.iconset" -o "$BUILD/Contents/Resources/mutewak
 # machine, so no Developer ID or notarization is involved.
 codesign --force --sign - --identifier "$LABEL" "$BUILD" >/dev/null 2>&1 || true
 
-# Where the previous install put the app: the manifest's record, or the pre-0.4
-# location under ~/.local/share. Removed below once the new copy is in place,
-# so moving APP_DIR (or upgrading) never leaves a second copy behind.
-PREV_APP="$LIBDIR/mutewake.app"
-if [[ -f "$MANIFEST" ]]; then
-  recorded="$(awk -F= '$1=="app"{sub(/^[^=]*=/,""); print; exit}' "$MANIFEST")"
-  [[ -n "$recorded" ]] && PREV_APP="$recorded"
-fi
-
 echo "==> Stopping any running instance"
 launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 
 echo "==> Installing $APP"
-mkdir -p "$APP_DIR"
 rm -rf "$APP"
 mv "$BUILD" "$APP"
-if [[ "$PREV_APP" != "$APP" && "$PREV_APP" == */mutewake.app && -d "$PREV_APP" ]]; then
-  rm -rf "$PREV_APP"
-  echo "    removed the previous copy at $PREV_APP"
+# -ef compares the actual directories, not their spellings: a string compare
+# would treat ".../Applications//mutewake.app" as different and delete the copy
+# that was just moved into place.
+if [[ "$PREV_APP" == */mutewake.app && -d "$PREV_APP" && ! "$PREV_APP" -ef "$APP" ]]; then
+  if rm -rf "$PREV_APP" 2>/dev/null; then
+    echo "    removed the previous copy at $PREV_APP"
+  else
+    echo "    warning: could not remove the previous copy at $PREV_APP; delete it by hand"
+  fi
 fi
 # Register with LaunchServices now, so Spotlight and Launchpad find it at once.
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true

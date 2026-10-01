@@ -117,6 +117,21 @@ check "exactly one instance (the launchd one)" '[[ "$(procs)" == 1 ]]'
 open "$APPDIR"; sleep 5
 check "opening it again does not start a second" '[[ "$(procs)" == 1 ]]'
 
+print "\\n[13] APP_DIR: spelling-proof, remembered, and movable"
+INSTALL="${0:A:h}/../install.sh"
+ALT="$(mktemp -d)/apps"
+APP_DIR="$HOME/Applications/" bash "$INSTALL" >/dev/null 2>&1
+bash "$INSTALL" >/dev/null 2>&1
+check "trailing slash then plain reinstall keeps the app" '[[ -x "$APPDIR/Contents/MacOS/mutewake" && -n "$(pid)" ]]'
+APP_DIR="$ALT" bash "$INSTALL" >/dev/null 2>&1
+check "custom APP_DIR installs there" '[[ -x "$ALT/mutewake.app/Contents/MacOS/mutewake" ]]'
+check "and removes the old copy" '[[ ! -e "$APPDIR" ]]'
+bash "$INSTALL" >/dev/null 2>&1
+check "a plain reinstall stays in the custom APP_DIR" '[[ -x "$ALT/mutewake.app/Contents/MacOS/mutewake" && ! -e "$APPDIR" ]]'
+APP_DIR="$HOME/Applications" bash "$INSTALL" >/dev/null 2>&1
+check "moving back to ~/Applications cleans up" '[[ -x "$APPDIR/Contents/MacOS/mutewake" && ! -e "$ALT/mutewake.app" && -n "$(pid)" ]]'
+rm -rf "${ALT:h}"
+
 mutewake on >/dev/null
 print "\n----- $pass passed, $fail failed -----"
 [[ $fail -eq 0 ]]
