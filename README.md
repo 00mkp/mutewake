@@ -192,15 +192,13 @@ mutewake's name and icon. They never play a sound.
   Recent Activity says "Banner off in Notifications settings" when one was
   skipped, and **System Settings → Notifications → mutewake** turns them back on.
 - **Notification center unavailable?** If macOS rejects the permission request
-  outright, mutewake falls back to posting through `osascript`, which macOS
-  attributes to Script Editor. A rejected request can also leave mutewake marked
-  "off" in System Settings; switching it on there fixes it.
+  outright, mutewake falls back to posting through `osascript`. Banners still
+  appear, and still under mutewake's name. On a first install this can also leave
+  mutewake marked "off" in System Settings; switching it on there fixes it.
 
-**Rebuilding resets the permission.** mutewake is ad-hoc signed, and macOS
-identifies an ad-hoc app by a hash of its exact binary, so every `install.sh` or
-`mutewake update` looks like a new app. After an update, re-enable mutewake in
-System Settings → Notifications. (A stable local signing identity would fix this;
-it isn't done yet.)
+Your choice survives updates. The first run right after an `install.sh` or
+`mutewake update` can briefly use the `osascript` fallback while macOS catches up
+with the rebuilt app; from the next start on it's back to native notifications.
 
 Earlier versions always used the Script Editor route, because every build was
 stamped with a minimum macOS newer than the one it ran on, and LaunchServices
