@@ -20,14 +20,29 @@ func handleAway(_ reason: String) {
         log("\(reason): skipped (disabled)")
         return
     }
-    if isMuted() {
+    let before = isMuted()
+    if before == true {
         log("\(reason): already muted")
         return
     }
+    // Unknown is treated like unmuted: muting twice is harmless, missing a mute
+    // is not.
     mute()
-    mutedWhileAway = isMuted()
+    let after = isMuted()
+    mutedWhileAway = after == true
     // No banner here on purpose - nobody is looking at the screen.
-    log(mutedWhileAway ? "\(reason): muted" : "\(reason): MUTE FAILED")
+    log("\(reason): " + outcome(before: before, after: after))
+}
+
+/// How a mute attempt went, worded so the log only claims what it could see.
+/// `before == nil` means the first status check timed out, so audio may
+/// already have been muted.
+func outcome(before: Bool?, after: Bool?) -> String {
+    switch after {
+    case true?: return before == nil ? "muted (status check timed out)" : "muted"
+    case nil: return "mute sent (couldn't confirm)"
+    case false?: return "MUTE FAILED"
+    }
 }
 
 func handleWake(_ reason: String) {
@@ -42,7 +57,8 @@ func handleWake(_ reason: String) {
     }
     lastAction = now
 
-    if isMuted() {
+    let before = isMuted()
+    if before == true {
         if mutedWhileAway {
             mutedWhileAway = false
             log("\(reason): already muted (muted while away)")
@@ -54,10 +70,11 @@ func handleWake(_ reason: String) {
     }
     mute()
     mutedWhileAway = false
-    if isMuted() {
-        log("\(reason): muted")
-        notify("Audio muted on \(reason).")
-    } else {
-        log("\(reason): MUTE FAILED")
+    let after = isMuted()
+    log("\(reason): " + outcome(before: before, after: after))
+    if after == true {
+        // If the first check timed out, audio may have been muted all along, so
+        // don't claim this wake is what muted it.
+        notify(before == nil ? "Audio is muted." : "Audio muted on \(reason).")
     }
 }
