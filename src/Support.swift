@@ -103,8 +103,15 @@ func osascript(_ script: String) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 }
 
-func isMuted() -> Bool {
-    osascript("output muted of (get volume settings)") == "true"
+/// Nil when macOS didn't answer - typically osascript timing out right after a
+/// wake, while the audio system is still coming back. Callers treat that as
+/// "unknown", not "unmuted", so the log never claims a change it can't see.
+func isMuted() -> Bool? {
+    switch osascript("output muted of (get volume settings)") {
+    case "true": return true
+    case "false": return false
+    default: return nil
+    }
 }
 
 func mute() {

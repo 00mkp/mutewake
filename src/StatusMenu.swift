@@ -175,6 +175,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         default: break
         }
         if message.hasPrefix("daemon start") { return "Started" }
+        // A slow audio system right after wake; see isMuted().
+        if message.hasPrefix("osascript timed out") { return "Audio status check timed out" }
         if message.hasPrefix("banner skipped") { return "Banner off in Notifications settings" }
         if message.hasPrefix("banner via Script Editor") { return "Banner sent via Script Editor" }
         if message.hasPrefix("notifications: allowed") { return "Notifications allowed" }
@@ -187,6 +189,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let outcome = parts[1].trimmingCharacters(in: .whitespaces)
         switch outcome {
         case "muted": return "Muted on \(event)"
+        case "muted (status check timed out)": return "Muted on \(event) (status didn't respond)"
+        case "mute sent (couldn't confirm)": return "Mute sent on \(event) (couldn't confirm)"
         case "MUTE FAILED": return "Mute failed on \(event)"
         case "skipped (disabled)": return "Ignored \(event) (off)"
         case "skipped (debounce)": return "Ignored duplicate \(event)"
