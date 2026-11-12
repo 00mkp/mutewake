@@ -177,6 +177,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         if message.hasPrefix("daemon start") { return "Started" }
         // A slow audio system right after wake; see isMuted().
         if message.hasPrefix("osascript timed out") { return "Audio status check timed out" }
+        if message.hasPrefix("audio call timed out") { return "Audio system didn't respond" }
+        if message.hasPrefix("mute not confirmed") { return "Mute not confirmed; retried" }
         if message.hasPrefix("banner skipped") { return "Banner off in Notifications settings" }
         if message.hasPrefix("banner via Script Editor") { return "Banner sent via Script Editor" }
         if message.hasPrefix("notifications: allowed") { return "Notifications allowed" }

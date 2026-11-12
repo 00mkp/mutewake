@@ -31,8 +31,8 @@ cd mutewake
 Or from a [release](https://github.com/00mkp/mutewake/releases) archive:
 
 ```sh
-curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.4.2.tar.gz | tar -xz
-cd mutewake-0.4.2
+curl -sL https://github.com/00mkp/mutewake/archive/refs/tags/v0.4.3.tar.gz | tar -xz
+cd mutewake-0.4.3
 ./install.sh
 ```
 
@@ -61,7 +61,7 @@ mutewake uninstall    remove the daemon, agent, state, and logs
 
 ```
 $ mutewake status
-version:  0.4.2
+version:  0.4.3
 feature:  on
 daemon:   running (pid 13958)
 audio:    muted
@@ -103,6 +103,12 @@ nothing and uses no measurable CPU:
 | `screenIsLocked` | Same as sleep |
 | `didWake` (lid open) | Mutes, and shows a banner |
 | `screenIsUnlocked` | Same as wake |
+
+Muting goes through CoreAudio in-process, so it takes well under a millisecond
+and holds up when the Mac is busy — which it usually is in the seconds around a
+lock or sleep. Each mute is confirmed and retried up to three times before it's
+logged as failed. Output devices without a CoreAudio mute control fall back to
+AppleScript's `set volume`.
 
 Leaving (sleep, lock) mutes silently; returning (wake, unlock) shows the banner.
 Locking earns its own trigger because a Mac can sit locked but awake — lid open,
@@ -160,7 +166,7 @@ a first install switches it on.
 If you installed from a tarball rather than a clone, point it at a source tree:
 
 ```sh
-mutewake update ~/Downloads/mutewake-0.4.2.tar.gz
+mutewake update ~/Downloads/mutewake-0.4.3.tar.gz
 mutewake update ~/some/checkout
 ```
 
