@@ -102,39 +102,3 @@ func osascript(_ script: String) -> String {
     return String(data: data, encoding: .utf8)?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 }
-
-/// Nil when macOS didn't answer - typically osascript timing out right after a
-/// wake, while the audio system is still coming back. Callers treat that as
-/// "unknown", not "unmuted", so the log never claims a change it can't see.
-func isMuted() -> Bool? {
-    switch osascript("output muted of (get volume settings)") {
-    case "true": return true
-    case "false": return false
-    default: return nil
-    }
-}
-
-func mute() {
-    osascript("set volume output muted true")
-}
-
-func unmute() {
-    osascript("set volume output muted false")
-}
-
-/// Mute state and output volume in one osascript round trip (~100 ms), so the
-/// menu can open without a visible stall. Nil when the output can't be read,
-/// e.g. some external interfaces report "missing value".
-func audioState() -> (muted: Bool, volume: Int)? {
-    // "output volume:40, input volume:27, alert volume:100, output muted:false"
-    var fields: [String: String] = [:]
-    for pair in osascript("get volume settings").split(separator: ",") {
-        let kv = pair.split(separator: ":", maxSplits: 1)
-        guard kv.count == 2 else { continue }
-        fields[kv[0].trimmingCharacters(in: .whitespaces)] =
-            kv[1].trimmingCharacters(in: .whitespaces)
-    }
-    guard let muted = fields["output muted"], let volume = fields["output volume"].flatMap({ Int($0) })
-    else { return nil }
-    return (muted == "true", volume)
-}

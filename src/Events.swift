@@ -27,8 +27,7 @@ func handleAway(_ reason: String) {
     }
     // Unknown is treated like unmuted: muting twice is harmless, missing a mute
     // is not.
-    mute()
-    let after = isMuted()
+    let after = muteAndConfirm()
     mutedWhileAway = after == true
     // No banner here on purpose - nobody is looking at the screen.
     log("\(reason): " + outcome(before: before, after: after))
@@ -68,9 +67,8 @@ func handleWake(_ reason: String) {
         }
         return
     }
-    mute()
+    let after = muteAndConfirm()
     mutedWhileAway = false
-    let after = isMuted()
     log("\(reason): " + outcome(before: before, after: after))
     if after == true {
         // If the first check timed out, audio may have been muted all along, so
